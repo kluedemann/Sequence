@@ -1,4 +1,7 @@
 # This program runs the popular board game of Sequence.
+# The objective of the game align chips in rows of 5 horizontally, vertically, or diagonally.
+# Players take turns playing cards and placing chips in the corresponding locations on the board.
+# The first team to reach the required number of Sequences wins the game.
 # The code is based on the pre-poke-framework from UAlberta CMPUT 174 Fall 2020.
 # This program is for personal use only. Sequence(R) is property of Jax Ltd.
 
@@ -26,6 +29,8 @@ def main():
 
 
 def load_images():
+    # Load the images associated with each card.
+    # Returns - dict; the images associated with a str card ID (unscaled)
     suits = ['H', 'D', 'S', 'C']
     nums = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
     images = {}
@@ -35,7 +40,8 @@ def load_images():
             path = os.path.join("card_images", "{}.png".format(key))
             image = pygame.image.load(path)
             images[key] = image
-    images['W'] = pygame.image.load(os.path.join("card_images", "W2.png"))
+    images['W'] = pygame.image.load(os.path.join("card_images", "W.png"))
+    images['back'] = pygame.image.load(os.path.join("card_images", "card_back.png"))
     return images
 
 # User-defined classes
@@ -105,6 +111,9 @@ class Game:
         pass
 
     def create_board(self):
+        # Create the Board object.
+        # self - Game; the Game object
+        # returns - Board; the Sequence Board
         board_color = pygame.Color((100, 70, 40))
         board_size = [1200, 800]
         board_pos = [0, 0]
@@ -118,6 +127,14 @@ class Board:
     # This class represents the Sequence Board.
 
     def __init__(self, position, size, color, images, surface):
+        # Initialize the Board.
+        # self - Board; the Board to initialize
+        # position - list; the x and y coordinates of the top-left corner of the Board
+        # size - list; the width and height of the Board
+        # color - pygame.Color; the color of the Board
+        # images - dict; the images associated with each card
+        # surface - pygame.Surface; the Game window
+
         self.rect = pygame.Rect(position, size)
         self.size = 10
         self.color = color
@@ -126,12 +143,18 @@ class Board:
         self.tiles = self.create_tiles()
 
     def draw(self):
+        # Draw the Board to the screen.
+        # self - Board; the Board to draw
+
         pygame.draw.rect(self.surface, self.color, self.rect)
         for row in self.tiles:
             for tile in row:
                 tile.draw()
 
     def create_tiles(self):
+        # Create the Tiles on the Board from a file.
+        # self - Board; the Board object
+
         filename = "board1.txt"
         with open(filename, 'r') as in_file:
             content = in_file.read()
@@ -147,6 +170,13 @@ class Board:
         return tiles
 
     def create_tile(self, card, i, j):
+        # Initialize the Tiles on the Board.
+        # self - Board; the Board object
+        # card - str; the ID of the card of the Tile
+        # i - int; the row index of the Tile
+        # j - int; the column index of the Tile
+        # return - Tile; the new Tile object
+
         gap_size = 5
         image_width = (self.rect.width - gap_size * (self.size + 1)) // self.size
         image_height = (self.rect.height - gap_size * (self.size + 1)) // self.size
@@ -162,6 +192,13 @@ class Tile:
     # This class represents a Tile.
 
     def __init__(self, card, image, position, size, surface):
+        # Initialize a Tile object.
+        # self - Tile; the Tile to initialize
+        # card - str; the card ID of the Tile
+        # image - pygame.Surface; the image representing the Tile
+        # position - list; the x and y coordinates of the top-left corner of the Tile
+        # surface - pygame.Surface; the Game window
+
         self.card = card
         self.image = image
         self.pos = position
@@ -174,6 +211,8 @@ class Tile:
         self.is_highlighted = False
 
     def draw(self):
+        # Draw the Tile to screen.
+        # self - Tile; the Tile to draw
         self.surface.blit(self.image, self.pos)
         if self.is_highlighted:
             pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rect, width=3)
