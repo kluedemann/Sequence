@@ -67,6 +67,10 @@ class Game:
         # === game specific objects
         self.images_dict = load_images()
         self.board = self.create_board()
+        self.num_sequences = 0
+        self.current_color = pygame.Color('blue')
+        self.current_hand = ['JC']
+        self.draw()
 
     def play(self):
         # Play the game until the player presses the close box.
@@ -89,6 +93,10 @@ class Game:
         for event in events:
             if event.type == pygame.QUIT:
                 self.close_clicked = True
+            elif event.type == pygame.MOUSEBUTTONUP and self.continue_game:
+                self.handle_mouse_up(event)
+            elif event.type == pygame.MOUSEMOTION and self.continue_game:
+                self.handle_mouse_motion(event)
 
     def draw(self):
         # Draw all game objects.
@@ -108,7 +116,9 @@ class Game:
         # Check and remember if the game should continue
         # - self is the Game to check
 
-        pass
+        if self.num_sequences >= 3:
+            self.continue_game = False
+            print("Game Over!")
 
     def create_board(self):
         # Create the Board object.
@@ -121,6 +131,18 @@ class Game:
             board_pos[axis] = (self.surface.get_size()[axis] - board_size[axis]) // 2
         board = Board(board_pos, board_size, board_color, self.images_dict, self.surface)
         return board
+
+    def handle_mouse_up(self, event):
+        # Handle mouse up events.
+        # self - Game; the Game object
+        # event - pygame.Event; the event to be handled
+
+        self.board.select(event.pos, self.current_color, self.current_hand)
+        self.num_sequences = self.board.check_sequences(self.current_color)
+        print(self.num_sequences)
+
+    def handle_mouse_motion(self, event):
+        pass
 
 
 class Board:
@@ -169,23 +191,116 @@ class Board:
             tiles.append(row)
         return tiles
 
-    def create_tile(self, card, i, j):
+    def create_tile(self, card, row_ind, col_ind):
         # Initialize the Tiles on the Board.
         # self - Board; the Board object
         # card - str; the ID of the card of the Tile
-        # i - int; the row index of the Tile
-        # j - int; the column index of the Tile
+        # row_ind - int; the row index of the Tile
+        # col_ind - int; the column index of the Tile
         # return - Tile; the new Tile object
 
         gap_size = 5
         image_width = (self.rect.width - gap_size * (self.size + 1)) // self.size
         image_height = (self.rect.height - gap_size * (self.size + 1)) // self.size
         image = self.images[card]
-        x = j * (image_width + gap_size) + self.rect.left + gap_size
-        y = i * (image_height + gap_size) + self.rect.top + gap_size
+        x = col_ind * (image_width + gap_size) + self.rect.left + gap_size
+        y = row_ind * (image_height + gap_size) + self.rect.top + gap_size
         image = pygame.transform.rotate(image, 90)
         image = pygame.transform.scale(image, (image_width, image_height))
         return Tile(card, image, (x, y), (image_width, image_height), self.surface)
+
+    def select(self, position, color, cards):
+        # Attempt to play a piece on a Tile on the Board.
+        # self - Board; the Board to select
+        # color - pygame.Color; the color of the team playing
+        # cards - list; the hand of the player playing
+
+        for row in self.tiles:
+            for tile in row:
+                tile.select(position, color, cards)
+
+    def check_sequences(self, color):
+        # Count the sequences for a given team on the Board.
+        # self - Board; the Board to check
+        # color - pygame.Color; the color of the team to check
+        # returns - int; number of valid sequences
+
+        sequences = 0
+        for row_ind in range(self.size):
+            for col_ind in range(self.size):
+                sequences += self.check_sequence(row_ind, col_ind, color)
+        return sequences
+
+    def check_sequence(self, row_ind, col_ind, color):
+        # Count the sequences starting from the given Tile.
+        # self - Board; the Board to check
+        # row_ind - int; the row index of the Tile checked
+        # col_ind - int; the column index of the Tile checked
+        # color - pygame.Color; the color of the team to check
+        # returns - int; the number of sequences formed from this Tile
+
+        right = self.check_right(row_ind, col_ind, color)
+        down = self.check_down(row_ind, col_ind, color)
+        down_right = self.check_down_right(row_ind, col_ind, color)
+        down_left = self.check_down_left(row_ind, col_ind, color)
+        directions = [right, down, down_right, down_left]
+        count = 0
+        for direction in directions:
+            if direction == 5 or direction == 10:
+                count += 1
+        return count
+
+    def check_right(self, row_ind, col_ind, color):
+        # Count the length of the series to the right of the Tile.
+        # self - Board; the Board to check
+        # row_ind - int; the row index of the Tile checked
+        # col_ind - int; the column index of the Tile checked
+        # color - pygame.Color; the color of the team to check
+        # returns - int; the length of the series
+
+        if 0 <= col_ind < self.size:
+            if self.tiles[row_ind][col_ind].matches(color):
+                return 1 + self.check_right(row_ind, col_ind + 1, color)
+        return 0
+
+    def check_down(self, row_ind, col_ind, color):
+        # Count the length of the series downward from the Tile.
+        # self - Board; the Board to check
+        # row_ind - int; the row index of the Tile checked
+        # col_ind - int; the column index of the Tile checked
+        # color - pygame.Color; the color of the team to check
+        # returns - int; the length of the series
+
+        if 0 <= row_ind < self.size:
+            if self.tiles[row_ind][col_ind].matches(color):
+                return 1 + self.check_down(row_ind + 1, col_ind, color)
+        return 0
+
+    def check_down_right(self, row_ind, col_ind, color):
+        # Count the length of the series downward and to the right of the Tile.
+        # self - Board; the Board to check
+        # row_ind - int; the row index of the Tile checked
+        # col_ind - int; the column index of the Tile checked
+        # color - pygame.Color; the color of the team to check
+        # returns - int; the length of the series
+
+        if 0 <= row_ind < self.size and 0 <= col_ind < self.size:
+            if self.tiles[row_ind][col_ind].matches(color):
+                return 1 + self.check_down_right(row_ind + 1, col_ind + 1, color)
+        return 0
+
+    def check_down_left(self, row_ind, col_ind, color):
+        # Count the length of the series downward and to the left of the Tile.
+        # self - Board; the Board to check
+        # row_ind - int; the row index of the Tile checked
+        # col_ind - int; the column index of the Tile checked
+        # color - pygame.Color; the color of the team to check
+        # returns - int; the length of the series
+
+        if 0 <= row_ind < self.size and 0 <= col_ind < self.size:
+            if self.tiles[row_ind][col_ind].matches(color):
+                return 1 + self.check_down_left(row_ind + 1, col_ind - 1, color)
+        return 0
 
 
 class Tile:
@@ -213,11 +328,37 @@ class Tile:
     def draw(self):
         # Draw the Tile to screen.
         # self - Tile; the Tile to draw
+
         self.surface.blit(self.image, self.pos)
         if self.is_highlighted:
             pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rect, width=3)
         if self.color is not None:
             pygame.draw.circle(self.surface, self.color, self.centre, 25)
+
+    def select(self, position, color, cards):
+        # Check if the Tile can be played on. Update self.color and return True if so.
+        # self - Tile; the Tile to select
+        # position - list; the x and y coordinates of the mouse click
+        # color - pygame.Color; the color of the team selecting the Tile
+        # cards - list; the ID of the cards in the player's hand
+
+        if self.rect.collidepoint(position[0], position[1]) and self.card != 'W':
+            if self.color is None:
+                if self.card in cards or 'JC' in cards or 'JD' in cards:
+                    self.color = color
+                    return True
+            elif self.color != color:
+                if 'JS' in cards or 'JH' in cards:
+                    self.color = None
+                    return True
+        return False
+
+    def matches(self, color):
+        # Return True if the piece on this Tile matches the color.
+        # self - Tile; the Tile to check
+        # color - pygame.Color; the color to check for a match
+
+        return self.color == color or self.card == 'W'
 
 
 main()
