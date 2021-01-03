@@ -89,6 +89,7 @@ class Game:
         self.num_cards = self.get_num_cards()
         self.hands = self.setup_hands()
         self.num_sequences = [0, 0, 0]
+        self.max_sequences = self.get_max_sequences()
         self.turn_num = 0
         self.colors = [pygame.Color('blue'), pygame.Color('green'), pygame.Color('red')]
 
@@ -137,18 +138,26 @@ class Game:
         pass
 
     def decide_continue(self):
-        # Check and remember if the game should continue
+        # Check and remember if the game should continue.
         # - self is the Game to check
 
+        # Check win
         for num in self.num_sequences:
-            if num >= 3:
+            if num >= self.max_sequences:
                 self.continue_game = False
                 print("Game Over!")
+
+        # Check Tie
+        current_player = self.turn_num % self.num_players
+        if len(self.hands[current_player]) == 0:
+            print("Game Over!")
+
 
     def create_board(self):
         # Create the Board object.
         # self - Game; the Game object
         # returns - Board; the Sequence Board
+
         board_color = pygame.Color((100, 70, 40))
         board_size = [1200, 800]
         board_pos = [0, 0]
@@ -162,12 +171,21 @@ class Game:
         # self - Game; the Game object
         # event - pygame.Event; the event to be handled
 
-        current_hand = self.hands[self.turn_num % self.num_players]
+        current_player_num = self.turn_num % self.num_players
+        current_hand = self.hands[current_player_num]
         current_color = self.colors[self.turn_num % self.num_teams]
-        has_moved = self.board.select(event.pos, current_color, current_hand)
-        self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
-        if has_moved:
-            self.turn_num += 1
+        tile_played = self.board.select(event.pos, current_color, current_hand)
+        if tile_played is not None:
+            card_played = tile_played.get_card_played(current_hand)
+            if self.is_valid_move(card_played, tile_played):
+                self.hands[current_player_num].remove(card_played)
+                if len(self.deck) > 0:
+                    self.hands[current_player_num].append(self.deck.pop(0))
+                self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
+                self.turn_num += 1
+            else:
+                tile_played.revert_color()
+        print(self.hands)
         print(self.num_sequences, self.turn_num)
 
     def handle_mouse_motion(self, event):
@@ -219,6 +237,32 @@ class Game:
         }
         return num_cards_dict.get(self.num_players)
 
+    def is_valid_move(self, card_played, tile_played):
+        # Check if a chip has been removed from a sequence
+        # self - Game; the Game object
+        # card_played - str; the ID of the card played
+        # tile_played - Tile; the Tile that was played on
+        # returns - bool; whether the move was valid or not
+
+        is_valid = True
+        if card_played == 'JS' or card_played == 'JH':
+            previous_color = tile_played.get_previous_color()
+            previous_team_ind = self.colors.index(previous_color)
+            if self.board.check_sequences(previous_color) < self.num_sequences[previous_team_ind]:
+                is_valid = False
+        return is_valid
+
+    def get_max_sequences(self):
+        # Determine the number of sequences required to win.
+        # self - Game; the Game object
+        # returns - int; the number of sequences required
+
+        if self.num_teams == 2:
+            max_sequences = 3
+        else:
+            max_sequences = 2
+        return max_sequences
+
 
 class Board:
     # This class represents the Sequence Board.
@@ -251,6 +295,7 @@ class Board:
     def create_tiles(self):
         # Create the Tiles on the Board from a file.
         # self - Board; the Board object
+        # Returns - list; 2D list of Tiles
 
         filename = "board1.txt"
         with open(filename, 'r') as in_file:
@@ -272,7 +317,7 @@ class Board:
         # card - str; the ID of the card of the Tile
         # row_ind - int; the row index of the Tile
         # col_ind - int; the column index of the Tile
-        # return - Tile; the new Tile object
+        # returns - Tile; the new Tile object
 
         gap_size = 5
         image_width = (self.rect.width - gap_size * (self.size + 1)) // self.size
@@ -289,12 +334,13 @@ class Board:
         # self - Board; the Board to select
         # color - pygame.Color; the color of the team playing
         # cards - list; the hand of the player playing
+        # returns - Tile; the Tile played on, else None
 
         for row in self.tiles:
             for tile in row:
                 if tile.select(position, color, cards):
-                    return True
-        return False
+                    return tile
+        return None
 
     def check_sequences(self, color):
         # Count the sequences for a given team on the Board.
@@ -401,6 +447,7 @@ class Tile:
         self.surface = surface
         self.color = None
         self.is_highlighted = False
+        self.previous_color = None
 
     def draw(self):
         # Draw the Tile to screen.
@@ -418,17 +465,20 @@ class Tile:
         # position - list; the x and y coordinates of the mouse click
         # color - pygame.Color; the color of the team selecting the Tile
         # cards - list; the ID of the cards in the player's hand
+        # returns - bool; True if move was valid
 
+        is_valid_move = False
         if self.rect.collidepoint(position[0], position[1]) and self.card != 'W':
             if self.color is None:
                 if self.card in cards or 'JC' in cards or 'JD' in cards:
                     self.color = color
-                    return True
+                    is_valid_move = True
             elif self.color != color:
                 if 'JS' in cards or 'JH' in cards:
+                    self.previous_color = self.color
                     self.color = None
-                    return True
-        return False
+                    is_valid_move = True
+        return is_valid_move
 
     def matches(self, color):
         # Return True if the piece on this Tile matches the color.
@@ -436,6 +486,40 @@ class Tile:
         # color - pygame.Color; the color to check for a match
 
         return self.color == color or self.card == 'W'
+
+    def get_card_played(self, cards):
+        # Return the card that was played from a hand.
+        # self - Tile; the Tile that was played on
+        # cards - list; the cards in the player's hand
+        # returns - str; the card ID of the card played
+
+        if self.color is None:
+            if 'JS' in cards:
+                card = 'JS'
+            else:
+                card = 'JH'
+        else:
+            if self.card in cards:
+                card = self.card
+            elif 'JC' in cards:
+                card = 'JC'
+            else:
+                card = 'JD'
+        return card
+
+    def get_previous_color(self):
+        # Return the previous color after a chip removal.
+        # self - Tile; the Tile object
+        # returns - pygame.Color; the previous color
+
+        return self.previous_color
+
+    def revert_color(self):
+        # Revert the chip color to the previous color.
+        # self - Tile; the Tile to revert
+
+        self.color = self.previous_color
+        self.previous_color = None
 
 
 main()
