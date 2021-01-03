@@ -7,6 +7,7 @@
 
 import os
 import pygame
+import random
 
 
 # User-defined functions
@@ -47,6 +48,21 @@ def load_images():
 # User-defined classes
 
 
+def setup_deck():
+    # Setup and return the deck.
+    # returns - list; the cards in the deck
+
+    deck = []
+    suits = ['H', 'D', 'S', 'C']
+    nums = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+    for suit in suits:
+        for num in nums:
+            deck.append(num + suit)
+    deck *= 2
+    random.shuffle(deck)
+    return deck
+
+
 class Game:
     # An object in this class represents a complete game.
 
@@ -67,10 +83,18 @@ class Game:
         # === game specific objects
         self.images_dict = load_images()
         self.board = self.create_board()
-        self.num_sequences = 0
-        self.current_color = pygame.Color('blue')
-        self.current_hand = ['JC']
-        self.draw()
+        self.num_players = 2
+        self.num_teams = self.get_num_teams()
+        self.deck = setup_deck()
+        self.num_cards = self.get_num_cards()
+        self.hands = self.setup_hands()
+        self.num_sequences = [0, 0, 0]
+        self.turn_num = 0
+        self.colors = [pygame.Color('blue'), pygame.Color('green'), pygame.Color('red')]
+
+        print(self.num_players, self.num_teams, self.num_cards)
+        print(self.deck)
+        print(self.hands)
 
     def play(self):
         # Play the game until the player presses the close box.
@@ -116,9 +140,10 @@ class Game:
         # Check and remember if the game should continue
         # - self is the Game to check
 
-        if self.num_sequences >= 3:
-            self.continue_game = False
-            print("Game Over!")
+        for num in self.num_sequences:
+            if num >= 3:
+                self.continue_game = False
+                print("Game Over!")
 
     def create_board(self):
         # Create the Board object.
@@ -137,12 +162,62 @@ class Game:
         # self - Game; the Game object
         # event - pygame.Event; the event to be handled
 
-        self.board.select(event.pos, self.current_color, self.current_hand)
-        self.num_sequences = self.board.check_sequences(self.current_color)
-        print(self.num_sequences)
+        current_hand = self.hands[self.turn_num % self.num_players]
+        current_color = self.colors[self.turn_num % self.num_teams]
+        has_moved = self.board.select(event.pos, current_color, current_hand)
+        self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
+        if has_moved:
+            self.turn_num += 1
+        print(self.num_sequences, self.turn_num)
 
     def handle_mouse_motion(self, event):
+        # Handle mouse motion events.
+        # self - Game; the Game object
+        # event - pygame.Event; the event to be handled
+
         pass
+
+    def get_num_teams(self):
+        # Determine the number of teams given the number of players.
+        # self - Game; the Game object
+        # returns - int; the number of teams
+
+        if self.num_players % 3 == 0:
+            return 3
+        elif self.num_players % 2 == 0:
+            return 2
+        else:
+            print("Number of players must be divisible by 2 or 3.")
+
+    def setup_hands(self):
+        # Setup the hands of cards for each player
+        # self - Game; the Game object
+        # returns - list; a 2D list of str of the card IDs for each player
+
+        hands = []
+        for i in range(self.num_cards):
+            for player_ind in range(self.num_players):
+                if i == 0:
+                    hands.append([])
+                hands[player_ind].append(self.deck.pop(0))
+        return hands
+
+    def get_num_cards(self):
+        # Return the number of cards dealt to each player given the number of players.
+        # self - Game; the Game object
+        # returns - int; the number of cards for each player
+
+        num_cards_dict = {
+            2: 7,
+            3: 6,
+            4: 6,
+            6: 5,
+            8: 4,
+            9: 4,
+            10: 3,
+            12: 3
+        }
+        return num_cards_dict.get(self.num_players)
 
 
 class Board:
@@ -217,7 +292,9 @@ class Board:
 
         for row in self.tiles:
             for tile in row:
-                tile.select(position, color, cards)
+                if tile.select(position, color, cards):
+                    return True
+        return False
 
     def check_sequences(self, color):
         # Count the sequences for a given team on the Board.
