@@ -92,6 +92,7 @@ class Game:
         self.max_sequences = self.get_max_sequences()
         self.turn_num = 0
         self.colors = [pygame.Color('blue'), pygame.Color('green'), pygame.Color('red')]
+        self.players = self.setup_players()
 
         print(self.num_players, self.num_teams, self.num_cards)
         print(self.deck)
@@ -129,6 +130,11 @@ class Game:
 
         self.surface.fill(self.bg_color)  # clear the display surface first
         self.board.draw()
+        for i in range(len(self.players)):
+            if i == self.turn_num % self.num_players:
+                self.players[i].draw(True, False)
+            else:
+                self.players[i].draw(False, True)
         pygame.display.update()  # make the updated surface appear on the display
 
     def update(self):
@@ -151,7 +157,6 @@ class Game:
         current_player = self.turn_num % self.num_players
         if len(self.hands[current_player]) == 0:
             print("Game Over!")
-
 
     def create_board(self):
         # Create the Board object.
@@ -262,6 +267,17 @@ class Game:
         else:
             max_sequences = 2
         return max_sequences
+
+    def setup_players(self):
+        # Setup a list of the player objects.
+        # self - Game; the Game object
+        # returns - list; the Player objects
+
+        players = []
+        for i in range(self.num_players):
+            player = Player(self.hands[i], self.colors[i % self.num_teams], self.board, self.images_dict, self.surface)
+            players.append(player)
+        return players
 
 
 class Board:
@@ -425,6 +441,12 @@ class Board:
                 return 1 + self.check_down_left(row_ind + 1, col_ind - 1, color)
         return 0
 
+    def get_rect(self):
+        # Return the pygame.Rect representing the Board.
+        # self - Board; the Board object
+
+        return self.rect
+
 
 class Tile:
     # This class represents a Tile.
@@ -520,6 +542,76 @@ class Tile:
 
         self.color = self.previous_color
         self.previous_color = None
+
+
+class Player:
+    # This class represents a sequence player. The player has a team and cards that can be displayed.
+
+    def __init__(self, cards, color, board, images, surface):
+        # Initialize a Player.
+        # self - Player; the player to initialize
+        # cards - list; contains the str card IDs of the player
+        # color - pygame.Color; the color of the player's team
+        # surface - pygame.Surface;
+
+        self.cards = cards
+        self.color = color
+        self.board = board
+        self.images = images
+        self.surface = surface
+        self.rects = self.create_rects()
+        self.setup_images()
+        self.highlighted = None
+
+    def draw(self, is_turn, is_hidden):
+        # Draw the Player's hand to the screen.
+        # self - Player; the Player object
+        # is_turn - bool; True if it is the Player's turn
+        # is_hidden - bool; True if the cards are hidden
+
+        if is_turn:
+            for ind, rect in enumerate(self.rects):
+                if is_hidden:
+                    image = self.images['back']
+                else:
+                    image = self.images[self.cards[ind]]
+                self.surface.blit(image, rect.topleft)
+            if self.highlighted is not None:
+                for ind, rect in enumerate(self.rects):
+                    if self.highlighted == ind:
+                        pygame.draw.rect(self.surface, pygame.Color('yellow'), rect, width=5)
+
+    def select(self):
+        pass
+
+    def create_rects(self):
+        # Create the rectangles used to handle selection.
+        # self - Player; the Player object
+
+        # Display cards on right with equal borders and constant gaps.
+        rect_list = []
+        board_rect = self.board.get_rect()
+        gap_width = 5
+        card_height = (board_rect.height - 3 * gap_width) // 4
+        card_width = card_height * 2 // 3
+        border_width = (self.surface.get_width() - board_rect.right - 2 * card_width - gap_width) // 2
+        x_start = board_rect.right + border_width
+        y_start = board_rect.top
+        for i in range(len(self.cards)):
+            x = (i % 2) * (card_width + gap_width) + x_start
+            y = (i // 2) * (card_height + gap_width) + y_start
+            rect = pygame.Rect(x, y, card_width, card_height)
+            rect_list.append(rect)
+        return rect_list
+
+    def setup_images(self):
+        # Reformat the images to fit the hand.
+        # self - Player; the Player object
+
+        for card in self.images.keys():
+            image = self.images.get(card)
+            image = pygame.transform.scale(image, (self.rects[0].width, self.rects[0].height))
+            self.images[card] = image
 
 
 main()
