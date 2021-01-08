@@ -83,20 +83,20 @@ class Game:
         # === game specific objects
         self.images_dict = load_images()
         self.board = self.create_board()
-        self.num_players = 2
+        self.num_players = 3
         self.num_teams = self.get_num_teams()
         self.deck = setup_deck()
         self.num_cards = self.get_num_cards()
-        self.hands = self.setup_hands()
         self.num_sequences = [0, 0, 0]
         self.max_sequences = self.get_max_sequences()
         self.turn_num = 0
-        self.colors = [pygame.Color('blue'), pygame.Color('green'), pygame.Color('red')]
+        self.is_ready = False
+        self.colors = ['blue', 'green', 'red']
         self.players = self.setup_players()
+        self.draw()
 
         print(self.num_players, self.num_teams, self.num_cards)
         print(self.deck)
-        print(self.hands)
 
     def play(self):
         # Play the game until the player presses the close box.
@@ -105,10 +105,8 @@ class Game:
         while not self.close_clicked:  # until player clicks close box
             # play frame
             self.handle_events()
-            self.draw()
             if self.continue_game:
                 self.update()
-                self.decide_continue()
             self.game_Clock.tick(self.FPS)  # run at most with FPS Frames Per Second
 
     def handle_events(self):
@@ -121,8 +119,6 @@ class Game:
                 self.close_clicked = True
             elif event.type == pygame.MOUSEBUTTONUP and self.continue_game:
                 self.handle_mouse_up(event)
-            elif event.type == pygame.MOUSEMOTION and self.continue_game:
-                self.handle_mouse_motion(event)
 
     def draw(self):
         # Draw all game objects.
@@ -130,11 +126,7 @@ class Game:
 
         self.surface.fill(self.bg_color)  # clear the display surface first
         self.board.draw()
-        for i in range(len(self.players)):
-            if i == self.turn_num % self.num_players:
-                self.players[i].draw(True, False)
-            else:
-                self.players[i].draw(False, True)
+        self.draw_hands()
         pygame.display.update()  # make the updated surface appear on the display
 
     def update(self):
@@ -154,8 +146,9 @@ class Game:
                 print("Game Over!")
 
         # Check Tie
-        current_player = self.turn_num % self.num_players
-        if len(self.hands[current_player]) == 0:
+        current_player = self.players[self.turn_num % self.num_players]
+        if len(current_player.get_hand()) == 0:
+            self.continue_game = False
             print("Game Over!")
 
     def create_board(self):
@@ -176,29 +169,25 @@ class Game:
         # self - Game; the Game object
         # event - pygame.Event; the event to be handled
 
-        current_player_num = self.turn_num % self.num_players
-        current_hand = self.hands[current_player_num]
-        current_color = self.colors[self.turn_num % self.num_teams]
-        tile_played = self.board.select(event.pos, current_color, current_hand)
-        if tile_played is not None:
-            card_played = tile_played.get_card_played(current_hand)
-            if self.is_valid_move(card_played, tile_played):
-                self.hands[current_player_num].remove(card_played)
-                if len(self.deck) > 0:
-                    self.hands[current_player_num].append(self.deck.pop(0))
-                self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
-                self.turn_num += 1
+        if event.button == 1:
+            if self.is_ready:
+                current_player = self.players[self.turn_num % self.num_players]
+                current_hand = current_player.get_hand()
+                current_color = self.colors[self.turn_num % self.num_teams]
+                tile_played = self.board.select(event.pos, current_color, current_hand)
+                if tile_played is not None:
+                    card_played = tile_played.get_card_played(current_hand)
+                    if self.is_valid_move(card_played, tile_played):
+                        current_player.replace_card(card_played, self.deck)
+                        self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
+                        self.turn_num += 1
+                        self.is_ready = False
+                    else:
+                        tile_played.revert_color()
+                self.decide_continue()
             else:
-                tile_played.revert_color()
-        print(self.hands)
-        print(self.num_sequences, self.turn_num)
-
-    def handle_mouse_motion(self, event):
-        # Handle mouse motion events.
-        # self - Game; the Game object
-        # event - pygame.Event; the event to be handled
-
-        pass
+                self.is_ready = True
+            self.draw()
 
     def get_num_teams(self):
         # Determine the number of teams given the number of players.
@@ -273,11 +262,20 @@ class Game:
         # self - Game; the Game object
         # returns - list; the Player objects
 
+        hands = self.setup_hands()
         players = []
         for i in range(self.num_players):
-            player = Player(self.hands[i], self.colors[i % self.num_teams], self.board, self.images_dict, self.surface)
+            player = Player(hands[i], self.board.get_rect(), self.images_dict, self.surface)
             players.append(player)
         return players
+
+    def draw_hands(self):
+        # Draw the hands to the screen.
+        # self - Game; the Game object
+
+        for i in range(len(self.players)):
+            if i == self.turn_num % self.num_players:
+                self.players[i].draw_turn(not self.is_ready)
 
 
 class Board:
@@ -348,7 +346,7 @@ class Board:
     def select(self, position, color, cards):
         # Attempt to play a piece on a Tile on the Board.
         # self - Board; the Board to select
-        # color - pygame.Color; the color of the team playing
+        # color - str; the color of the team playing
         # cards - list; the hand of the player playing
         # returns - Tile; the Tile played on, else None
 
@@ -361,7 +359,7 @@ class Board:
     def check_sequences(self, color):
         # Count the sequences for a given team on the Board.
         # self - Board; the Board to check
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; number of valid sequences
 
         sequences = 0
@@ -375,7 +373,7 @@ class Board:
         # self - Board; the Board to check
         # row_ind - int; the row index of the Tile checked
         # col_ind - int; the column index of the Tile checked
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; the number of sequences formed from this Tile
 
         right = self.check_right(row_ind, col_ind, color)
@@ -394,7 +392,7 @@ class Board:
         # self - Board; the Board to check
         # row_ind - int; the row index of the Tile checked
         # col_ind - int; the column index of the Tile checked
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; the length of the series
 
         if 0 <= col_ind < self.size:
@@ -407,7 +405,7 @@ class Board:
         # self - Board; the Board to check
         # row_ind - int; the row index of the Tile checked
         # col_ind - int; the column index of the Tile checked
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; the length of the series
 
         if 0 <= row_ind < self.size:
@@ -420,7 +418,7 @@ class Board:
         # self - Board; the Board to check
         # row_ind - int; the row index of the Tile checked
         # col_ind - int; the column index of the Tile checked
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; the length of the series
 
         if 0 <= row_ind < self.size and 0 <= col_ind < self.size:
@@ -433,7 +431,7 @@ class Board:
         # self - Board; the Board to check
         # row_ind - int; the row index of the Tile checked
         # col_ind - int; the column index of the Tile checked
-        # color - pygame.Color; the color of the team to check
+        # color - str; the color of the team to check
         # returns - int; the length of the series
 
         if 0 <= row_ind < self.size and 0 <= col_ind < self.size:
@@ -479,13 +477,14 @@ class Tile:
         if self.is_highlighted:
             pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rect, width=3)
         if self.color is not None:
-            pygame.draw.circle(self.surface, self.color, self.centre, 25)
+            pygame.draw.circle(self.surface, pygame.Color(self.color), self.centre, 25)
+            pygame.draw.circle(self.surface, pygame.Color(self.color + '4'), self.centre, 25, width=3)
 
     def select(self, position, color, cards):
         # Check if the Tile can be played on. Update self.color and return True if so.
         # self - Tile; the Tile to select
         # position - list; the x and y coordinates of the mouse click
-        # color - pygame.Color; the color of the team selecting the Tile
+        # color - str; the color of the team selecting the Tile
         # cards - list; the ID of the cards in the player's hand
         # returns - bool; True if move was valid
 
@@ -505,7 +504,7 @@ class Tile:
     def matches(self, color):
         # Return True if the piece on this Tile matches the color.
         # self - Tile; the Tile to check
-        # color - pygame.Color; the color to check for a match
+        # color - str; the color to check for a match
 
         return self.color == color or self.card == 'W'
 
@@ -532,7 +531,7 @@ class Tile:
     def get_previous_color(self):
         # Return the previous color after a chip removal.
         # self - Tile; the Tile object
-        # returns - pygame.Color; the previous color
+        # returns - str; the previous color
 
         return self.previous_color
 
@@ -547,62 +546,60 @@ class Tile:
 class Player:
     # This class represents a sequence player. The player has a team and cards that can be displayed.
 
-    def __init__(self, cards, color, board, images, surface):
+    def __init__(self, cards, board_rect, images, surface):
         # Initialize a Player.
         # self - Player; the player to initialize
         # cards - list; contains the str card IDs of the player
-        # color - pygame.Color; the color of the player's team
+        # board - Board; the Board object
+        # images - dict; the images of cards referenced by their str ID
         # surface - pygame.Surface;
 
         self.cards = cards
-        self.color = color
-        self.board = board
         self.images = images
         self.surface = surface
-        self.rects = self.create_rects()
+        self.rects = self.create_rects(board_rect)
         self.setup_images()
         self.highlighted = None
 
-    def draw(self, is_turn, is_hidden):
-        # Draw the Player's hand to the screen.
+    def draw_turn(self, is_hidden):
+        # Draw the Player's hand to the screen if it is their turn.
         # self - Player; the Player object
-        # is_turn - bool; True if it is the Player's turn
         # is_hidden - bool; True if the cards are hidden
 
-        if is_turn:
-            for ind, rect in enumerate(self.rects):
-                if is_hidden:
-                    image = self.images['back']
-                else:
-                    image = self.images[self.cards[ind]]
-                self.surface.blit(image, rect.topleft)
-            if self.highlighted is not None:
-                for ind, rect in enumerate(self.rects):
-                    if self.highlighted == ind:
-                        pygame.draw.rect(self.surface, pygame.Color('yellow'), rect, width=5)
+        for ind in range(len(self.cards)):
+            if is_hidden:
+                image = self.images['back']
+            else:
+                image = self.images[self.cards[ind]]
+            self.surface.blit(image, self.rects[ind].topleft)
+        if self.highlighted is not None:
+            for ind in range(len(self.cards)):
+                if self.highlighted == ind:
+                    pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rects[ind], width=5)
 
     def select(self):
         pass
 
-    def create_rects(self):
+    def create_rects(self, board_rect):
         # Create the rectangles used to handle selection.
         # self - Player; the Player object
+        # board - Board; the Board object
+        # returns - list; the rects used to show the cards
 
         # Display cards on right with equal borders and constant gaps.
-        rect_list = []
-        board_rect = self.board.get_rect()
-        gap_width = 5
-        card_height = (board_rect.height - 3 * gap_width) // 4
+        rects = []
+        gap_size = 10
+        card_height = (board_rect.height - 3 * gap_size) // 4
         card_width = card_height * 2 // 3
-        border_width = (self.surface.get_width() - board_rect.right - 2 * card_width - gap_width) // 2
+        border_width = (self.surface.get_width() - board_rect.right - 2 * card_width - gap_size) // 2
         x_start = board_rect.right + border_width
         y_start = board_rect.top
         for i in range(len(self.cards)):
-            x = (i % 2) * (card_width + gap_width) + x_start
-            y = (i // 2) * (card_height + gap_width) + y_start
+            x = (i % 2) * (card_width + gap_size) + x_start
+            y = (i // 2) * (card_height + gap_size) + y_start
             rect = pygame.Rect(x, y, card_width, card_height)
-            rect_list.append(rect)
-        return rect_list
+            rects.append(rect)
+        return rects
 
     def setup_images(self):
         # Reformat the images to fit the hand.
@@ -612,6 +609,24 @@ class Player:
             image = self.images.get(card)
             image = pygame.transform.scale(image, (self.rects[0].width, self.rects[0].height))
             self.images[card] = image
+
+    def get_hand(self):
+        # Return the Player's hand.
+        # self - Player; the Player object
+        # returns - list; the cards in the Player's hand
+
+        return self.cards
+
+    def replace_card(self, old_card, deck):
+        # Replace the given card in the Player's hand with a new card.
+        # self - Player; the Player object
+        # old_card - str; the old card to remove
+        # deck - list; the deck to draw from
+
+        old_index = self.cards.index(old_card)
+        self.cards.remove(old_card)
+        if len(deck) > 0:
+            self.cards.insert(old_index, deck.pop(0))
 
 
 main()
