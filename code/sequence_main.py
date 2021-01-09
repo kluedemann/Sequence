@@ -140,7 +140,7 @@ class Game:
         # - self is the Game to check
 
         # Check win
-        for num in self.num_sequences:
+        for i, num in enumerate(self.num_sequences):
             if num >= self.max_sequences:
                 self.continue_game = False
                 print("Game Over!")
@@ -172,19 +172,10 @@ class Game:
         if event.button == 1:
             if self.is_ready:
                 current_player = self.players[self.turn_num % self.num_players]
-                current_hand = current_player.get_hand()
-                current_color = self.colors[self.turn_num % self.num_teams]
-                tile_played = self.board.select(event.pos, current_color, current_hand)
-                if tile_played is not None:
-                    card_played = tile_played.get_card_played(current_hand)
-                    if self.is_valid_move(card_played, tile_played):
-                        current_player.replace_card(card_played, self.deck)
-                        self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
-                        self.turn_num += 1
-                        self.is_ready = False
-                    else:
-                        tile_played.revert_color()
-                self.decide_continue()
+                self.play_turn(event.pos, current_player)
+                card_highlighted = current_player.select(event.pos)
+                if card_highlighted is not None:
+                    self.board.highlight(card_highlighted)
             else:
                 self.is_ready = True
             self.draw()
@@ -276,6 +267,26 @@ class Game:
         for i in range(len(self.players)):
             if i == self.turn_num % self.num_players:
                 self.players[i].draw_turn(not self.is_ready)
+
+    def play_turn(self, position, current_player):
+        # Make a move when a valid Tile on the Board is clicked.
+        # self - Game; the Game object
+        # position - list; the x and y coordinates of the mouse up event
+        # current_player - Player; the Player whose turn it is
+
+        current_hand = current_player.get_hand()
+        current_color = self.colors[self.turn_num % self.num_teams]
+        tile_played = self.board.select(position, current_color, current_hand)
+        if tile_played is not None:
+            card_played = tile_played.get_card_played(current_hand)
+            if self.is_valid_move(card_played, tile_played):
+                current_player.replace_card(card_played, self.deck)
+                self.num_sequences[self.turn_num % self.num_teams] = self.board.check_sequences(current_color)
+                self.turn_num += 1
+                self.is_ready = False
+                self.decide_continue()
+            else:
+                tile_played.revert_color()
 
 
 class Board:
@@ -445,6 +456,15 @@ class Board:
 
         return self.rect
 
+    def highlight(self, card):
+        # Highlight all matching Tiles in the Board.
+        # self - Board; the Board object
+        # card - str; the card ID to check
+
+        for row in self.tiles:
+            for tile in row:
+                tile.highlight(card)
+
 
 class Tile:
     # This class represents a Tile.
@@ -476,6 +496,7 @@ class Tile:
         self.surface.blit(self.image, self.pos)
         if self.is_highlighted:
             pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rect, width=3)
+            self.is_highlighted = False
         if self.color is not None:
             pygame.draw.circle(self.surface, pygame.Color(self.color), self.centre, 25)
             pygame.draw.circle(self.surface, pygame.Color(self.color + '4'), self.centre, 25, width=3)
@@ -542,6 +563,14 @@ class Tile:
         self.color = self.previous_color
         self.previous_color = None
 
+    def highlight(self, card):
+        # Highlight the Tile if the card matches.
+        # self - Tile; the Tile to highlight
+        # card - str; the card ID to check against
+
+        if self.card == card:
+            self.is_highlighted = True
+
 
 class Player:
     # This class represents a sequence player. The player has a team and cards that can be displayed.
@@ -577,8 +606,17 @@ class Player:
                 if self.highlighted == ind:
                     pygame.draw.rect(self.surface, pygame.Color('yellow'), self.rects[ind], width=5)
 
-    def select(self):
-        pass
+    def select(self, position):
+        # Select a card from the Player's hand to highlight on the Board.
+        # self - Player; the Player object
+        # position - list; the x and y coordinates of the mouse up event
+        # returns - str; the card ID of the card highlighted
+
+        for i in range(len(self.cards)):
+            if self.rects[i].collidepoint(position):
+                self.highlighted = i
+                return self.cards[i]
+        self.highlighted = None
 
     def create_rects(self, board_rect):
         # Create the rectangles used to handle selection.
