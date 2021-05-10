@@ -83,7 +83,7 @@ class Game:
         # === game specific objects
         self.images_dict = load_images()
         self.board = self.create_board()
-        self.num_players = 3
+        self.num_players = 2
         self.num_teams = self.get_num_teams()
         self.deck = setup_deck()
         self.num_cards = self.get_num_cards()
@@ -144,10 +144,11 @@ class Game:
             if num >= self.max_sequences:
                 self.continue_game = False
                 print("Game Over!")
+                self.draw_game_over(self.colors[i])
 
         # Check Tie
         current_player = self.players[self.turn_num % self.num_players]
-        if len(current_player.get_hand()) == 0:
+        if len(current_player.get_hand()) == 0 or current_player.has_moves(self.board):
             self.continue_game = False
             print("Game Over!")
 
@@ -287,6 +288,13 @@ class Game:
                 self.decide_continue()
             else:
                 tile_played.revert_color()
+
+    def draw_game_over(self, result):
+        # Draw a Game over message depending on the outcome.
+        # self - Game; the Game object
+        # result - str; the color of the winning team, or None if tie
+
+        pass
 
 
 class Board:
@@ -665,6 +673,14 @@ class Player:
         self.cards.remove(old_card)
         if len(deck) > 0:
             self.cards.insert(old_index, deck.pop(0))
+
+    def has_moves(self, board):
+        # Return True if the Player has a move remaining; False otherwise.
+        # self - Player; the Player to check
+
+        can_move = False
+        if 'JS' in self.cards or 'JH' in self.cards:
+            can_move = True
 
 
 main()
